@@ -113,8 +113,46 @@ void TCPAssignment::syscall_socket(UUID syscallUUID, int pid, int domain, int ty
 
 }
 void TCPAssignment::syscall_bind(UUID syscallUUID, int pid, int sockfd, struct sockaddr *addr, socklen_t addrlen) {
-  
+  if(addrlen < sizeof(struct sockaddr_in)){
+    this -> returnSystemCall(syscallUUID, -1);
+  }
 
+  if(addr.sin_family != AF_INET){
+    this -> returnSystemCall(syscallUUID, -1);
+  }
+
+  for(auto &socket : sockTable){
+    if(sockTable.first == sockfd){
+      TCPSocket &newsocket = sockTable.second;
+    }
+  }
+  newsocket.localAddr = *( (struct sockaddr_in*) addr );
+
+  uint16_t bindPort = newsocket.localAddr.sin_port;
+  uint32_t effectiveIP = newsocket.localAddr.sin_addr.s_addr;
+
+  for(auto &entry sockTable){
+    // 자기 자신은 건너뜀
+    if (entry.first == sockfd)
+      continue;
+    // 닫힌 소켓은 체크하지 않음
+    if (entry.second.state == CLOSED)
+     continue;
+    // 포트 번호가 같은 경우
+    if (entry.second.localAddr.sin_port == bindPort) {
+     // 아래 세 경우 중 하나라도 만족하면 중복으로 간주:
+     // - 기존 소켓의 IP가 INADDR_ANY
+     // - 새로 바인딩할 IP가 INADDR_ANY
+     // - 두 IP가 동일한 경우
+     if (entry.second.localAddr.sin_addr.s_addr == INADDR_ANY || effectiveIP == INADDR_ANY ||
+         entry.second.localAddr.sin_addr.s_addr == effectiveIP) {
+         this->returnSystemCall(syscallUUID, -1);
+         return;
+     }
+    }
+  }
+  this->returnSystemCall(syscallUUID, 0);
+  
 }
 void TCPAssignment::syscall_getsockname() {
 
