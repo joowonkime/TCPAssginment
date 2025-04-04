@@ -21,7 +21,13 @@ enum TCPState {
   LISTEN = 1,
   SYN_SENT = 2,
   SYN_RECEIVED = 3,
-  ESTABLISHED = 4
+  ESTABLISHED = 4,
+  CLOSE_WAIT = 5,
+  LAST_ACK = 6,
+  FIN_WAIT_1 = 7,
+  FIN_WAIT_2 = 8,
+  CLOSING = 9,
+  TIME_WAIT = 10
 };
 
 
@@ -50,6 +56,12 @@ struct TCPSocket {
   int backlog;
 };
 
+struct TimerPayload {
+  int sockfd;
+  UUID syscallUUID;
+  int timerID;
+};
+
 namespace E {
 
 class TCPAssignment : public HostModule,
@@ -72,6 +84,9 @@ private:
   void syscall_listen(UUID syscallUUID, int pid, int sockfd, int backlog);
   void syscall_accept(UUID syscallUUID, int pid, int sockfd, struct sockaddr *addr, socklen_t *addrlen);
   void syscall_close(UUID syscallUUID, int pid, int sockfd);
+  void syscall_getpeername(UUID syscallUUID, int pid, int sockfd, struct sockaddr *addr, socklen_t *addrlen);
+  void syscall_read(UUID syscallUUID, int pid, int sockfd, void *buf, size_t len);
+  void syscall_write(UUID syscallUUID, int pid, int sockfd, const void *buf, size_t len);
 
 public:
   TCPAssignment(Host &host);
