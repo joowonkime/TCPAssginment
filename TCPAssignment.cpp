@@ -194,12 +194,12 @@ void TCPAssignment::syscall_connect(UUID syscallUUID, int pid, int sockfd, struc
   clientSocket.state = SYN_SENT;
 
   Packet synPacket;
-  uint8_t flag = 0x02;
+  uint8_t flag = 0x02; // SYN
   synPacket.writeData(FLAGS, &flag, 1);
 
   sendPacket("IPv4", std::move(synPacket));
 
-  TimerPayload timerPayload { sockfd, syscallUUID, 0 };
+  TimerPayload timerPayload { clientSocket.sockfd, syscallUUID, 0 };
   this->addTimer(std::any(timerPayload), 30000000000LL);
 
   this->returnSystemCall(syscallUUID, 0);
@@ -407,35 +407,57 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet &&packet) {
   }
 // 4way handshke end..
 
-  else if(serverSocket.state == LISTEN){ // 3handshake case
-    serverSocket.state = SYN_RECEIVED;
+  else if(serverSocket.state == LISTEN && clientSocket.state == SYN_SENT){ // 3handshake case
     size_t flag_buffer;
-    size_t client_isn;
     packet.readData(FLAGS, &flag_buffer, 1);
-    packet.readData(SEQNUM, &client_isn, 4);
     uint8_t syn_flag = flag_buffer & 0x02;
-    uint8_t ack_flag = flag_buffer & 0x10;
+    if(syn_flag == 0x02) {
+      serverSocket.state = SYN_RECEIVED;
+      size_t flag_buffer;
+      size_t client_isn;
+      packet.readData(FLAGS, &flag_buffer, 1);
+      packet.readData(SEQNUM, &client_isn, 4);
+      Packet &&serverPacket = packet.clone();
+      serverPacket.writeData(FLAGS, &flag_buffer, 0x12); // SYN + ACK
+      size_t server_isn = std::rand();
+      serverPacket.writeData(SEQNUM, &server_isn, 4);
+      size_t ack_num = client_isn + 1;
+      serverPacket.writeData(ACKNUM, &ack_num, 4);
+      TimerPayload timerPayload {clientSocket.sockfd, syscallUUID, 0 };
+      addTimer(std::any(timerPayload), 30000000000LL);
+      sendPacket("IPv4", std::move(serverPacket));
 
-
+    }
+    else {
+      this->returnSystemCall(serverPacket.getUUID(), -1);
+    }
     if (syn_flag == 0x00 && ack_flag == 0x10) {
       Packet &&serverPacket = packet.clone();
       serverSocket.state = ESTABLISHED;
       clientSocket.state = ESTABLISHED;
       this->returnSystemCall(serverPacket.getUUID(), serverPacket.getUUID());
     }
-    else if (syn_flag == 0x02) {
-      serverSocket.state = SYN_RECEIVED;
-      clientSocket.state = SYN_RECEIVED;
-      size_t flag_buffer = 0x12;
-      size_t seqNum = std::rand();
-      size_t ackNum = client_isn + 1;
-      Packet &&serverPacket = packet.clone();
-      serverPacket.writeData(FLAGS, &flag_buffer, 1);
-      serverPacket.writeData(SEQNUM, &seqNum, 4);
-      serverPacket.writeData(ACKNUM, &ackNum, 4);
-      sendPacket("IPv4", std::move(serverPacket));
-      this->returnSystemCall(serverPacket.getUUID(), serverPacket.getUUID());
+  }
+
+  else if(serverSocket.state == SYN_SENT && clientSocket.state == SYN_RECEIVED) {
+    size_t flag_buffer;
+    packet.readData(FLAGS, &flag_buffer, 1);
+    uint8_t ack_flag = flag_buffer & 0x10;
+    if (ack_flag == 0x10) {
+      cancelTimer(clientSocket.sockfd);
+      serverSocket.state = ESTABLISHED;
+      Packet &&clientPacket = packet.clone();
+      clientPacket.writeData(FLAGS, & flag_buffer, 0x10); // ACK
+      sendPacket("IPv4", std::move(clientPacket));
+      this->returnSystemCall(clientPacket.getUUID(), clientPacket.getUUID());
     }
+    else{
+      this->returnSystemCall(clientPacket.getUUID(), -1);
+    }
+  }
+  else if(serverSocket.state == ESTABLISHED && clientSocket.state == SYN_RECEIVED) {
+    clientSocket.state = ESTABLISHED;
+    this->returnSystemCall(clientPacket.getUUID(), 0);
   }
   
 }
