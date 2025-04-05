@@ -93,20 +93,20 @@
  }
  
  void TCPAssignment::syscall_socket(UUID syscallUUID, int pid, int domain, int type, int protocol) {
-   
    TCPSocket newSocket;
    int fdToUse = -1;
    for (int fd = 3; fd <= next_fd; fd++) {
     if (socketTable.find(fd) == socketTable.end()) {
       if(fd == next_fd){
         fdToUse = ++next_fd;
-      }  
-        else{
+      }
+      else{
         fdToUse = fd;
         break;
-        }
       }
     }
+    
+  } 
    newSocket.fd = fdToUse;
    newSocket.domain = domain;
    newSocket.type = type;
@@ -296,6 +296,9 @@
       //    return;
       //  }
      }
+     socketTable.erase(socket.second.fd);
+     this->returnSystemCall(syscallUUID, 0);
+     return;
    }
  }
  
